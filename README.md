@@ -16,6 +16,7 @@ A Node.js backend service that enables making AI-powered phone calls using Eleve
      - `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token
      - `TWILIO_PHONE_NUMBER`: Your Twilio Phone Number
      - `ELEVENLABS_API_KEY`: Your ElevenLabs API Key
+     - `ELEVENLABS_AGENT_ID`: Your ElevenLabs Agent ID
 
 3. Start the server:
    ```bash
