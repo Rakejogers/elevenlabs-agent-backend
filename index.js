@@ -53,7 +53,7 @@ fastify.post("/make-call", async (request, reply) => {
       sessionData.set(sessionId, { reminders, other });
   
       // Use a publicly accessible URL for the WebSocket
-      const publicUrl = `wss://d07e-153-33-66-106.ngrok-free.app/media-stream/${sessionId}`; // Replace with your ngrok URL
+      const publicUrl = `wss://make-call-api-c4gyhna6f2hah6fg.eastus-01.azurewebsites.net/media-stream/${sessionId}`; // Replace with your URL
   
       // Generate TwiML for the outbound call
       const twiml = new twilio.twiml.VoiceResponse();
@@ -226,7 +226,7 @@ fastify.post("/make-call", async (request, reply) => {
 });
 
 // Start the Fastify server
-fastify.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
+fastify.listen({ port: PORT }, (err) => {
   if (err) {
     console.error("Error starting server:", err);
     process.exit(1);
