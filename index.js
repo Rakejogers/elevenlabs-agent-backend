@@ -34,7 +34,7 @@ const PORT = process.env.PORT || 8080;
 
 // Root route for health check
 fastify.get("/", async (_, reply) => {
-  reply.send({ message: "Server is running" });
+  reply.code(200).send({ message: "Server is running" });
 });
 
 const sessionData = new Map(); // Store reminders/other by a unique key
