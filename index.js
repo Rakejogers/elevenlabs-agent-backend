@@ -12,7 +12,8 @@ const {
   ELEVENLABS_AGENT_ID, 
   TWILIO_ACCOUNT_SID, 
   TWILIO_AUTH_TOKEN,
-  TWILIO_PHONE_NUMBER 
+  TWILIO_PHONE_NUMBER,
+  PUBLIC_URL
 } = process.env;
 
 // Check for required environment variables
@@ -53,7 +54,7 @@ fastify.post("/make-call", async (request, reply) => {
       sessionData.set(sessionId, { reminders, other });
   
       // Use a publicly accessible URL for the WebSocket
-      const publicUrl = `wss://make-call-api-c4gyhna6f2hah6fg.eastus-01.azurewebsites.net/media-stream/${sessionId}`; // Replace with your URL
+      const publicUrl = `wss://${PUBLIC_URL}/media-stream/${sessionId}`; // Replace with your URL
   
       // Generate TwiML for the outbound call
       const twiml = new twilio.twiml.VoiceResponse();
