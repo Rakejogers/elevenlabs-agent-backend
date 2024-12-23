@@ -30,7 +30,7 @@ const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 // Root route for health check
 fastify.get("/", async (_, reply) => {
@@ -227,7 +227,7 @@ fastify.post("/make-call", async (request, reply) => {
 });
 
 // Start the Fastify server
-fastify.listen({ port: PORT }, (err) => {
+fastify.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
   if (err) {
     console.error("Error starting server:", err);
     process.exit(1);
