@@ -30,7 +30,7 @@ const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
-const PORT = 8080;
+const PORT = process.env.PORT || 3000;
 
 // Root route for health check
 fastify.get("/", async (_, reply) => {
