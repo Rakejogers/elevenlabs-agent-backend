@@ -4,40 +4,66 @@ import dotenv from "dotenv";
 import fastifyFormBody from "@fastify/formbody";
 import fastifyWs from "@fastify/websocket";
 import twilio from "twilio";
+import { createClient } from '@supabase/supabase-js';
 
 // Load environment variables from .env file
 dotenv.config();
 
-const { 
-  ELEVENLABS_AGENT_ID, 
-  TWILIO_ACCOUNT_SID, 
+const {
+  ELEVENLABS_AGENT_ID,
+  TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
   TWILIO_PHONE_NUMBER,
-  PUBLIC_URL
+  PUBLIC_URL,
+  NEXT_PUBLIC_SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  AUTH_TOKEN
 } = process.env;
 
-// Check for required environment variables
-if (!ELEVENLABS_AGENT_ID || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+if (!ELEVENLABS_AGENT_ID || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER || !NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing required environment variables");
   process.exit(1);
 }
 
-// Initialize Twilio client
+const supabase = createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-
-// Initialize Fastify server
 const fastify = Fastify();
+
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 const PORT = 3000;
+const sessionData = new Map();
+
+// Authorization Middleware
+fastify.addHook("preHandler", async (request, reply) => {
+  try {
+    const authHeader = request.headers["authorization"];
+    const twilioSignature = request.headers["x-twilio-signature"];
+
+    if (!authHeader && !twilioSignature) {
+      return reply.code(401).send({ error: "Authorization token or Twilio signature is required" });
+    }
+
+    if (twilioSignature) {
+      if (!twilio.validateRequest(TWILIO_AUTH_TOKEN, twilioSignature, `https://${request.headers["host"]}${request.url}`)) {
+        return reply.code(403).send({ error: "Invalid Twilio signature" });
+      }
+    } else if (authHeader) {
+      const token = authHeader.split(" ")[1];
+      if (token !== AUTH_TOKEN) {
+        return reply.code(403).send({ error: "Invalid authorization token" });
+      }
+    }
+  } catch (error) {
+    console.error("Error checking for authorization token:", error);
+  }
+});
 
 // Root route for health check
 fastify.get("/", async (_, reply) => {
   reply.code(200).send({ message: "Server is running" });
 });
-
-const sessionData = new Map(); // Store reminders/other by a unique key
 
 // Route to initiate outbound calls
 fastify.post("/make-call", async (request, reply) => {
@@ -86,7 +112,7 @@ fastify.post("/make-call", async (request, reply) => {
         console.info("[Server] Twilio connected to media stream.");
         const { sessionId } = req.params;
 
-  
+        let currentConversationId = null;
         let streamSid = null;
 
         const { reminders, other } = sessionData.get(sessionId) || { reminders: "No specific reminders.", other: "" };
@@ -145,7 +171,8 @@ fastify.post("/make-call", async (request, reply) => {
     const handleElevenLabsMessage = (message, connection) => {
       switch (message.type) {
         case "conversation_initiation_metadata":
-          console.info("[II] Received conversation initiation metadata.");
+          console.info("[II] Received conversation initiation metadata: ", message);
+          currentConversationId = message.conversation_id;
           break;
         case "audio":
           if (message.audio_event?.audio_base_64) {
