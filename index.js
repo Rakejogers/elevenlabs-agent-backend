@@ -77,60 +77,85 @@ fastify.get("/", async (_, reply) => {
   reply.code(200).send({ message: "Server is running" });
 });
 
-// Route to initiate outbound calls
-fastify.post("/make-call", async (request, reply) => {
-    try {
-      const { phoneNumber } = request.body;
-      const scheduledCallId = request.headers['scheduled-call-id'] || null;
-      const userId = request.headers['user-id'] || null;
-      const reminders = request.headers['reminders'] || "No specific reminders.";
-      const other = request.headers['other'] || "";
-      
-      if (!phoneNumber) {
-        return reply.code(400).send({ error: "Phone number is required" });
-      }
+const callQueue = [];
+let isProcessingQueue = false;
 
-       // Check if the scheduled call exists and userId matches
-       const { data: scheduledCall, error: fetchError } = await supabase
-       .from('scheduled_calls')
-       .select('*')
-       .eq('id', scheduledCallId)
-       .eq('user_id', userId)
-      
-      if (fetchError || !scheduledCall) {
-        return reply.code(404).send({ error: "Scheduled call not found or user ID mismatch" });
-      }
+async function processQueue() {
+  if (isProcessingQueue || callQueue.length === 0) return;
 
-      const sessionId = crypto.randomUUID();
-      sessionData.set(sessionId, { scheduledCallId, userId, reminders, other, phoneNumber });
-  
-      // Use a publicly accessible URL for the WebSocket
-      const publicUrl = `wss://${PUBLIC_URL}/media-stream/${sessionId}`; // Replace with your URL
-  
-      // Generate TwiML for the outbound call
-      const twiml = new twilio.twiml.VoiceResponse();
-      twiml.connect().stream({ url: publicUrl });
-      console.log(`[Server] TwiML: ${twiml.toString()}`);
-  
-      // Initiate the call
-      const call = await twilioClient.calls.create({
-        twiml: twiml.toString(),
-        to: phoneNumber,
-        from: TWILIO_PHONE_NUMBER
-      });
-  
-      reply.send({
-        success: true,
-        callSid: call.sid,
-        status: call.status,
-        sessionId
-      });
-  
-    } catch (error) {
-      console.error("Error making call:", error);
-      reply.code(500).send({ error: error.message });
+  isProcessingQueue = true;
+  const { request, reply } = callQueue.shift();
+
+  try {
+    const { phoneNumber } = request.body;
+    const scheduledCallId = request.headers['scheduled-call-id'] || null;
+    const userId = request.headers['user-id'] || null;
+    const reminders = request.headers['reminders'] || "No specific reminders.";
+    const other = request.headers['other'] || "";
+
+    console.log(`[Server] Processing call for user ID: ${userId}, scheduled call ID: ${scheduledCallId}, phone number: ${phoneNumber}`);
+
+    if (!phoneNumber) {
+      reply.code(400).send({ error: "Phone number is required" });
+      isProcessingQueue = false;
+      processQueue();
+      return;
     }
-  });
+
+    // Check if the scheduled call exists and userId matches
+    const { data: scheduledCall, error: fetchError } = await supabase
+      .from('scheduled_calls')
+      .select('*')
+      .eq('id', scheduledCallId)
+      .eq('user_id', userId);
+
+    if (fetchError || !scheduledCall) {
+      reply.code(404).send({ error: "Scheduled call not found or user ID mismatch" });
+      isProcessingQueue = false;
+      processQueue();
+      return;
+    }
+
+    const sessionId = crypto.randomUUID();
+    sessionData.set(sessionId, { scheduledCallId, userId, reminders, other, phoneNumber });
+
+    // Use a publicly accessible URL for the WebSocket
+    const publicUrl = `wss://${PUBLIC_URL}/media-stream/${sessionId}`;
+
+    // Generate TwiML for the outbound call
+    const twiml = new twilio.twiml.VoiceResponse();
+    twiml.connect().stream({ url: publicUrl });
+    console.log(`[Server] TwiML: ${twiml.toString()}`);
+
+    // Initiate the call
+    const call = await twilioClient.calls.create({
+      twiml: twiml.toString(),
+      to: phoneNumber,
+      from: TWILIO_PHONE_NUMBER,
+      statusCallback: `https://${PUBLIC_URL}/status-callback`, // Add your status callback URL
+      statusCallbackEvent: ['completed'] // Specify the events you want to receive
+    });
+
+    reply.send({
+      success: true,
+      callSid: call.sid,
+      status: call.status,
+      sessionId
+    });
+
+  } catch (error) {
+    console.error("Error making call:", error);
+    reply.code(500).send({ error: error.message });
+  } finally {
+    isProcessingQueue = false;
+    processQueue();
+  }
+}
+
+fastify.post("/make-call", async (request, reply) => {
+  callQueue.push({ request, reply });
+  processQueue();
+});
   
   fastify.register(async (fastifyInstance) => {
     fastifyInstance.get("/media-stream/:sessionId", { websocket: true }, (connection, req) => {
@@ -328,6 +353,22 @@ fastify.post("/make-call", async (request, reply) => {
         });
       });
     });
+
+fastify.post("/status-callback", async (request, reply) => {
+  const callSid = request.body.CallSid;
+  const callStatus = request.body.CallStatus;
+
+  console.log(`Call SID: ${callSid}, Status: ${callStatus}`);
+
+  if (callStatus === 'completed') {
+    // Call is completed, set isProcessingQueue to false
+    console.log("[Server] Call completed. Processing next...");
+    isProcessingQueue = false;
+    processQueue(); // Process the next call in the queue
+  }
+
+  reply.code(200).send();
+});
 
 // Start the Fastify server
 fastify.listen({ port: PORT, host: "0.0.0.0" }, (err) => {
