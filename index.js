@@ -103,7 +103,7 @@ async function processQueue() {
     const sessionId = crypto.randomUUID();
 
     // Use a publicly accessible URL for the WebSocket
-    const publicUrl = `wss://${PUBLIC_URL}/media-stream/${sessionId}`;
+    const publicUrl = `wss://${MEDIA_PUBLIC_URL}/media-stream/${sessionId}`;
 
     // Generate TwiML for the outbound call
     const twiml = new twilio.twiml.VoiceResponse();
@@ -115,7 +115,7 @@ async function processQueue() {
       twiml: twiml.toString(),
       to: phoneNumber,
       from: TWILIO_PHONE_NUMBER,
-      statusCallback: `https://${PUBLIC_URL}/status-callback`, // Add your status callback URL
+      statusCallback: `https://${INDEX_PUBLIC_URL}/status-callback`, // Add your status callback URL
       statusCallbackEvent: ['completed'] // Specify the events you want to receive
     });
 
